@@ -24,7 +24,7 @@ function appendSavedSetting(index, setting_title, hidden=false, total_tabs) {
       </div>
       <div class='right_items'>
         <span class='total_tabs'>${total_tabs} ${tab_word}</span>
-        <span data-title='${setting_title}' title='Export ${setting_title} to a file' class='export'> </span>
+        <span data-title='${setting_title}' title='Export ${setting_title} to a file' class='export' index='${index}'> </span>
         <span title='Delete ${setting_title}' class='del' index='${index}'> </span>
       </div>
     </div>`;
