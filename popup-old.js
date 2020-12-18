@@ -4,7 +4,6 @@
 const URL_SEPERATOR = '`';
 const SETTING_SEPERATOR = '|';
 const PINNED_TAB_INDICATOR = '*';
-const GROUP_INDICATOR = '^';
 const LAST_SESSION_TEXT = 'Open your last closed window or tab';
 
 let settings_body = null;
@@ -283,7 +282,6 @@ function handleTabsAndSave(tabs) {
     let urls = conf_title + URL_SEPERATOR;
     tabs.forEach((tab, index) => {
         if (tab.pinned) urls += PINNED_TAB_INDICATOR;
-        if (tab.groupId !== -1) urls += GROUP_INDICATOR + tab.groupId + GROUP_INDICATOR
         urls += tab.url;
         if (index < tabs.length - 1) urls += URL_SEPERATOR;
     });
@@ -300,111 +298,42 @@ function isPinnedTab(url) {
     return url.startsWith(PINNED_TAB_INDICATOR);
 }
 
-function isInGroup(url) {
-    // This function checks if a URL we saved to storage was in a group
-    return url.startsWith(GROUP_INDICATOR);
-}
-
-function g(tab) {
-    chrome.tabs.group({ tabIds: tab.id, createProperties: { windowId: tab.windowId } });
-}
-
-
-function isPinnedTab(url) {
-    // this function checks if a URL we saved to storage is pinned or not.
-    return url.startsWith(PINNED_TAB_INDICATOR);
-}
-
-function isInGroup(url) {
-    // This function checks if a URL we saved to storage was in a group
-    return url.startsWith(GROUP_INDICATOR);
-}
-
-// Open new tabs using the given urls
-function openTabsWithUrls(urls) {
-    // Shift over because urls[0] is garbage
-    urls.shift();
-
-    function groupTabs(tabs) {
-        chrome.tabs.group({ tabIds: tabs[0].id, createProperties: { windowId: tabs[0].windowId } }, (groupId) => {
-            tabs.shift();
-            tabs.forEach((tab) => {
-                chrome.tabs.group({ tabIds: tab.id, groupId: groupId });
-            });
-        });
-    }
-
-    function groupAll() {
-        setTimeout(() => {
-            for (let groupName in tabIdsToGroupLater) {
-                groupTabs(tabIdsToGroupLater[groupName]);
-            }
-        }, 10 * urls.length);
-    }
-
-    let tabIdsToGroupLater = {};
-    function markTabsToBeGrouped(tab, isGrouped, groupName) {
-        if (isGrouped) {
-            if (tabIdsToGroupLater[groupName] !== undefined) {
-                tabIdsToGroupLater[groupName].push(tab);
-            } else {
-                tabIdsToGroupLater[groupName] = [tab];
-            }
-        }
-    }
-
-    function openTabs(window, newWindow) {
-        chrome.tabs.query({ currentWindow: true }, (tabs) => {
-            urls.forEach((current_url, index) => {
+function openTabsWithUrls(arr) {
+    // open a new Chrome window and load the saved URLs into tabs in it.
+    arr.shift();
+    if ($('#chkOpenNewWindow').is(':checked')) {
+        chrome.windows.create({ focused: true }, (window) => {
+            // create a new window
+            arr.forEach((current_url, index) => {
                 const isPinned = isPinnedTab(current_url);
                 if (isPinned) {
                     current_url = current_url.substring(1, current_url.length); //remove the * that marks this url as 'pinned'
                 }
-                const isGrouped = isInGroup(current_url);
-                let groupName = undefined;
-                if (isGrouped) {
-                    let s = current_url.split(GROUP_INDICATOR);
-                    groupName = s[1];
-                    current_url = s[2];
-                }
-                const tab_properties = { url: current_url, pinned: isPinned, active: false, windowId: window.id };
-                const tab_properties_u = { url: current_url, pinned: isPinned, active: false };
                 // create the tab for the current url
-                // This tab is the first tab and is also blank, so overwrite it
-                if (index == 0 && (newWindow || tabs.length == 1 && tabs[0].url.indexOf('://newtab') > 0)) {
-                    chrome.tabs.update(window.tabs[0].id, tab_properties_u, (tab) => {
-                        markTabsToBeGrouped(tab, isGrouped, groupName);
-                        // If index is this big, then this is the final tab.
-                        // Once it's created its time to group all the tabs
-                        if (index == urls.length - 1) {
-                            groupAll();
-                        }
-                    });
+                if (index == 1) {
+                    chrome.tabs.update(window.tabs[0].id, { url: current_url, pinned: isPinned });
                 } else {
-                    chrome.tabs.create(tab_properties, (tab) => {
-                        markTabsToBeGrouped(tab, isGrouped, groupName);
-                        // If index is this big, then this is the final tab.
-                        // Once it's created its time to group all the tabs
-                        if (index == urls.length - 1) {
-                            groupAll();
-                        }
-                    });
+                    const tab_properties = { windowId: window.id, url: current_url, pinned: isPinned };
+                    setTimeout(() => chrome.tabs.create(tab_properties), 1);
                 }
             });
         });
-    }
-
-    if ($('#chkOpenNewWindow').is(':checked')) {
-        chrome.windows.create({ focused: true }, (window) => {
-            setTimeout(() => {
-                openTabs(window, true);
-            }, 10);
-        });
     } else {
-        chrome.windows.getCurrent((window) => {
-            setTimeout(() => {
-                openTabs(window, false);
-            }, 10);
+        // Use current window
+        chrome.tabs.query({ currentWindow: true }, (tabs) => {
+            arr.forEach((current_url, index) => {
+                const isPinned = isPinnedTab(current_url);
+                if (isPinned) {
+                    current_url = current_url.substring(1, current_url.length); //remove the * that marks this url as 'pinned'
+                }
+                const tab_properties = { url: current_url, pinned: isPinned };
+                // create the tab for the current url
+                if (index == 1 && (tabs.length == 1 && tabs[0].url.indexOf('://newtab') > 0)) {
+                    chrome.tabs.update(tabs[0].id, tab_properties);
+                } else {
+                    setTimeout(() => chrome.tabs.create(tab_properties), 1);
+                }
+            });
         });
     }
 }
